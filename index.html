@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Cobra Kai Arcade - Mobile Edition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      background-color: #0b0b12;
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+    }
+    .btn-touch {
+      active:scale-95;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-between h-screen w-screen p-2 text-white overflow-hidden select-none">
+
+  <!-- TOP BAR: SCOREBOARD & HEALTH BARS -->
+  <div class="w-full max-w-4xl bg-slate-900 border-2 border-yellow-500 rounded-lg p-3 shadow-lg flex flex-col gap-2 z-10">
+    <div class="flex justify-between items-center text-xs sm:text-base font-bold tracking-wider">
+      <span class="text-yellow-400">COBRA KAI (PLAYER)</span>
+      <span class="text-red-500 text-lg font-black tracking-widest">ALL VALLEY CHAMPIONSHIP</span>
+      <span class="text-cyan-400">MIYAGI-DO (AI)</span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 items-center">
+      <!-- Player 1 Health & Energy -->
+      <div class="flex flex-col gap-1">
+        <div class="w-full bg-red-950 h-5 border border-yellow-500 rounded overflow-hidden">
+          <div id="p1-health" class="bg-gradient-to-r from-yellow-500 to-red-500 h-full w-full transition-all duration-100"></div>
+        </div>
+        <div class="w-full bg-slate-800 h-2 border border-slate-600 rounded overflow-hidden">
+          <div id="p1-energy" class="bg-amber-400 h-full w-0 transition-all duration-100"></div>
+        </div>
+      </div>
+
+      <!-- AI Health & Energy -->
+      <div class="flex flex-col gap-1">
+        <div class="w-full bg-red-950 h-5 border border-cyan-500 rounded overflow-hidden">
+          <div id="p2-health" class="bg-gradient-to-r from-cyan-400 to-blue-600 h-full w-full transition-all duration-100"></div>
+        </div>
+        <div class="w-full bg-slate-800 h-2 border border-slate-600 rounded overflow-hidden">
+          <div id="p2-energy" class="bg-cyan-300 h-full w-0 transition-all duration-100"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS GAME ARENA -->
+  <div class="relative w-full max-w-4xl flex-1 my-2 border-4 border-yellow-600 rounded-lg overflow-hidden bg-black flex items-center justify-center shadow-2xl">
+    <canvas id="gameCanvas" class="w-full h-full object-contain"></canvas>
+
+    <!-- ANNOUNCER BANNER -->
+    <div id="announcer" class="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none hidden">
+      <h1 id="announcer-text" class="text-4xl sm:text-6xl font-black text-yellow-400 tracking-widest text-center drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)]">
+        READY... FIGHT!
+      </h1>
+    </div>
+  </div>
+
+  <!-- TOUCH CONTROLS (MOBILE FRIENDLY) -->
+  <div class="w-full max-w-4xl grid grid-cols-2 gap-4 p-2 bg-slate-950 border-t-2 border-yellow-500/50 rounded-t-xl z-10">
+    
+    <!-- LEFT SIDE: MOVEMENT BUTTONS -->
+    <div class="grid grid-cols-3 gap-2">
+      <button id="btn-left" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-3 active:bg-yellow-500 active:text-black font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        LEFT
+      </button>
+      <div class="grid grid-rows-2 gap-1">
+        <button id="btn-jump" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-1 active:bg-yellow-500 active:text-black font-black text-center text-xs sm:text-sm flex items-center justify-center shadow-md">
+          JUMP
+        </button>
+        <button id="btn-block" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-1 active:bg-yellow-500 active:text-black font-black text-center text-xs sm:text-sm flex items-center justify-center shadow-md">
+          BLOCK
+        </button>
+      </div>
+      <button id="btn-right" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-3 active:bg-yellow-500 active:text-black font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        RIGHT
+      </button>
+    </div>
+
+    <!-- RIGHT SIDE: COMBAT & SPECIAL BUTTONS -->
+    <div class="grid grid-cols-3 gap-2">
+      <button id="btn-punch" class="btn-touch bg-red-800 border-2 border-red-500 rounded-lg p-3 active:bg-red-500 font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        PUNCH
+      </button>
+      <button id="btn-kick" class="btn-touch bg-amber-700 border-2 border-amber-400 rounded-lg p-3 active:bg-amber-400 active:text-black font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        KICK
+      </button>
+      <button id="btn-special" class="btn-touch bg-gradient-to-r from-yellow-600 to-red-600 border-2 border-yellow-300 rounded-lg p-2 active:brightness-125 font-black text-center text-xs sm:text-sm flex items-center justify-center shadow-md col-span-1">
+        SPECIAL<br>SWEEP
+      </button>
+    </div>
+
+  </div>
+
+  <script>
+    // --- CANVAS SETUP ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1000;
+    canvas.height = 500;
+
+    // --- AUDIO SYNTHESIZER ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(freq, type, duration) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // --- GAME ENGINE STATE ---
+    const gravity = 0.8;
+    let gameOver = false;
+
+    // --- PLAYER CLASS ---
+    class Fighter {
+      constructor({ position, velocity, color, isAI }) {
+        this.position = position;
+        this.velocity = velocity;
+        this.width = 60;
+        this.height = 140;
+        this.color = color;
+        this.isAI = isAI;
+        this.health = 100;
+        this.energy = 0;
+        this.isGrounded = false;
+        this.isBlocking = false;
+        this.isAttacking = false;
+        this.attackType = '';
+        this.facing = isAI ? -1 : 1;
+        this.hitbox = { x: 0, y: 0, w: 0, h: 0 };
+        this.attackCooldown = 0;
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.position.x + this.width / 2, this.position.y + this.height / 2);
+        if (this.facing === -1) ctx.scale(-1, 1);
+
+        // Body Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath();
+        ctx.ellipse(0, this.height/2 - 5, 30, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Fighter Body (Dojo Gi)
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+
+        // Karate Belt
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(-this.width/2 - 2, 0, this.width + 4, 12);
+
+        // Head
+        ctx.fillStyle = '#f1c27d';
+        ctx.beginPath();
+        ctx.arc(0, -this.height/2 - 15, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Cobra / Miyagi Headband
+        ctx.fillStyle = this.isAI ? '#06b6d4' : '#eab308';
+        ctx.fillRect(-22, -this.height/2 - 28, 44, 8);
+
+        // Attack Render Visuals
+        if (this.isAttacking) {
+          ctx.fillStyle = '#ef4444';
+          if (this.attackType === 'punch') {
+            ctx.fillRect(10, -20, 50, 18);
+          } else if (this.attackType === 'kick') {
+            ctx.fillRect(10, 10, 65, 22);
+          } else if (this.attackType === 'special') {
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(-40, 40, 110, 25);
+          }
+        }
+
+        // Block Visual
+        if (this.isBlocking) {
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 4;
+          ctx.strokeRect(-this.width/2 - 5, -this.height/2 - 5, this.width + 10, this.height + 10);
+        }
+
+        ctx.restore();
+      }
+
+      update() {
+        this.position.x += this.velocity.x;
+        this.position.y += this.velocity.y;
+
+        // Apply Gravity
+        if (this.position.y + this.height + this.velocity.y < canvas.height - 40) {
+          this.velocity.y += gravity;
+          this.isGrounded = false;
+        } else {
+          this.velocity.y = 0;
+          this.position.y = canvas.height - 40 - this.height;
+          this.isGrounded = true;
+        }
+
+        // Arena Boundaries
+        if (this.position.x < 10) this.position.x = 10;
+        if (this.position.x + this.width > canvas.width - 10) this.position.x = canvas.width - 10 - this.width;
+
+        if (this.attackCooldown > 0) this.attackCooldown--;
+
+        this.draw();
+      }
+
+      attack(type) {
+        if (this.attackCooldown > 0 || this.isBlocking) return;
+        
+        if (type === 'special' && this.energy < 100) return;
+
+        this.isAttacking = true;
+        this.attackType = type;
+        this.attackCooldown = 25;
+
+        if (type === 'punch') playSound(300, 'square', 0.1);
+        if (type === 'kick') playSound(200, 'sawtooth', 0.15);
+        if (type === 'special') {
+          playSound(500, 'triangle', 0.4);
+          this.energy = 0;
+        }
+
+        setTimeout(() => {
+          this.isAttacking = false;
+        }, 200);
+      }
+    }
+
+    // --- INSTANTIATE FIGHTERS ---
+    const player = new Fighter({
+      position: { x: 150, y: 200 },
+      velocity: { x: 0, y: 0 },
+      color: '#18181b', // Cobra Kai Black Gi
+      isAI: false
+    });
+
+    const ai = new Fighter({
+      position: { x: 750, y: 200 },
+      velocity: { x: 0, y: 0 },
+      color: '#f8fafc', // Miyagi-Do White Gi
+      isAI: true
+    });
+
+    // --- TOUCH EVENT HANDLERS ---
+    function attachTouch(id, onPress, onRelease) {
+      const btn = document.getElementById(id);
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); onPress(); });
+      btn.addEventListener('touchend', (e) => { e.preventDefault(); if (onRelease) onRelease(); });
+      btn.addEventListener('mousedown', (e) => { e.preventDefault(); onPress(); });
+      btn.addEventListener('mouseup', (e) => { e.preventDefault(); if (onRelease) onRelease(); });
+    }
+
+    attachTouch('btn-left', () => { player.velocity.x = -6; }, () => { player.velocity.x = 0; });
+    attachTouch('btn-right', () => { player.velocity.x = 6; }, () => { player.velocity.x = 0; });
+    attachTouch('btn-jump', () => { if (player.isGrounded) player.velocity.y = -18; });
+    attachTouch('btn-block', () => { player.isBlocking = true; }, () => { player.isBlocking = false; });
+    attachTouch('btn-punch', () => { player.attack('punch'); });
+    attachTouch('btn-kick', () => { player.attack('kick'); });
+    attachTouch('btn-special', () => { player.attack('special'); });
+
+    // --- AI LOGIC BRAIN ---
+    function updateAI() {
+      if (gameOver) return;
+
+      const dist = player.position.x - ai.position.x;
+      ai.facing = dist > 0 ? 1 : -1;
+
+      // Distance Management
+      if (Math.abs(dist) > 90) {
+        ai.velocity.x = dist > 0 ? 3.5 : -3.5;
+        ai.isBlocking = false;
+      } else {
+        ai.velocity.x = 0;
+
+        // Counter & Attack Logic
+        if (player.isAttacking && Math.random() < 0.6) {
+          ai.isBlocking = true;
+        } else {
+          ai.isBlocking = false;
+          if (ai.attackCooldown === 0) {
+            const randMove = Math.random();
+            if (randMove < 0.45) ai.attack('punch');
+            else if (randMove < 0.85) ai.attack('kick');
+            else if (ai.energy >= 100) ai.attack('special');
+          }
+        }
+      }
+    }
+
+    // --- HITBOX COLLISION DETECTOR ---
+    function checkCollision(attacker, defender) {
+      if (!attacker.isAttacking) return false;
+
+      const attackRange = attacker.attackType === 'special' ? 100 : 70;
+      const reach = attacker.facing === 1 
+        ? (attacker.position.x + attacker.width < defender.position.x + defender.width && attacker.position.x + attacker.width + attackRange > defender.position.x)
+        : (attacker.position.x - attackRange < defender.position.x + defender.width && attacker.position.x > defender.position.x);
+
+      return reach && Math.abs(attacker.position.y - defender.position.y) < 80;
+    }
+
+    // --- GAME LOOP ---
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Arena Background Render
+      ctx.fillStyle = '#1e1b4b';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+
+      // Update Characters
+      player.update();
+      ai.update();
+      updateAI();
+
+      // Check Hits: Player -> AI
+      if (player.isAttacking && checkCollision(player, ai)) {
+        player.isAttacking = false;
+        const damage = player.attackType === 'special' ? 25 : (player.attackType === 'kick' ? 12 : 8);
+        
+        if (ai.isBlocking) {
+          ai.health -= damage * 0.2;
+          playSound(120, 'sine', 0.1);
+        } else {
+          ai.health -= damage;
+          player.energy = Math.min(100, player.energy + 18);
+          playSound(100, 'sawtooth', 0.2);
+        }
+      }
+
+      // Check Hits: AI -> Player
+      if (ai.isAttacking && checkCollision(ai, player)) {
+        ai.isAttacking = false;
+        const damage = ai.attackType === 'special' ? 25 : (ai.attackType === 'kick' ? 12 : 8);
+
+        if (player.isBlocking) {
+          player.health -= damage * 0.2;
+          playSound(120, 'sine', 0.1);
+        } else {
+          player.health -= damage;
+          ai.energy = Math.min(100, ai.energy + 18);
+          playSound(100, 'sawtooth', 0.2);
+        }
+      }
+
+      // Update UI HUD Bars
+      document.getElementById('p1-health').style.width = Math.max(0, player.health) + '%';
+      document.getElementById('p2-health').style.width = Math.max(0, ai.health) + '%';
+      document.getElementById('p1-energy').style.width = player.energy + '%';
+      document.getElementById('p2-energy').style.width = ai.energy + '%';
+
+      // Check Win / Loss Conditions
+      if (!gameOver) {
+        if (player.health <= 0 || ai.health <= 0) {
+          gameOver = true;
+          const banner = document.getElementById('announcer');
+          const bannerText = document.getElementById('announcer-text');
+          banner.classList.remove('hidden');
+
+          if (player.health > 0) {
+            bannerText.innerText = "COBRA KAI WINS!\nNO MERCY!";
+            bannerText.className = "text-4xl sm:text-6xl font-black text-yellow-400 text-center";
+          } else {
+            bannerText.innerText = "MIYAGI-DO WINS!\nSTRIKE FIRST NEXT TIME!";
+            bannerText.className = "text-4xl sm:text-6xl font-black text-cyan-400 text-center";
+          }
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Cobra Kai Arcade - Mobile Edition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      background-color: #0b0b12;
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+    }
+    .btn-touch {
+      active:scale-95;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-between h-screen w-screen p-2 text-white overflow-hidden select-none">
+
+  <!-- TOP BAR: SCOREBOARD & HEALTH BARS -->
+  <div class="w-full max-w-4xl bg-slate-900 border-2 border-yellow-500 rounded-lg p-3 shadow-lg flex flex-col gap-2 z-10">
+    <div class="flex justify-between items-center text-xs sm:text-base font-bold tracking-wider">
+      <span class="text-yellow-400">COBRA KAI (PLAYER)</span>
+      <span class="text-red-500 text-lg font-black tracking-widest">ALL VALLEY CHAMPIONSHIP</span>
+      <span class="text-cyan-400">MIYAGI-DO (AI)</span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 items-center">
+      <!-- Player 1 Health & Energy -->
+      <div class="flex flex-col gap-1">
+        <div class="w-full bg-red-950 h-5 border border-yellow-500 rounded overflow-hidden">
+          <div id="p1-health" class="bg-gradient-to-r from-yellow-500 to-red-500 h-full w-full transition-all duration-100"></div>
+        </div>
+        <div class="w-full bg-slate-800 h-2 border border-slate-600 rounded overflow-hidden">
+          <div id="p1-energy" class="bg-amber-400 h-full w-0 transition-all duration-100"></div>
+        </div>
+      </div>
+
+      <!-- AI Health & Energy -->
+      <div class="flex flex-col gap-1">
+        <div class="w-full bg-red-950 h-5 border border-cyan-500 rounded overflow-hidden">
+          <div id="p2-health" class="bg-gradient-to-r from-cyan-400 to-blue-600 h-full w-full transition-all duration-100"></div>
+        </div>
+        <div class="w-full bg-slate-800 h-2 border border-slate-600 rounded overflow-hidden">
+          <div id="p2-energy" class="bg-cyan-300 h-full w-0 transition-all duration-100"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS GAME ARENA -->
+  <div class="relative w-full max-w-4xl flex-1 my-2 border-4 border-yellow-600 rounded-lg overflow-hidden bg-black flex items-center justify-center shadow-2xl">
+    <canvas id="gameCanvas" class="w-full h-full object-contain"></canvas>
+
+    <!-- ANNOUNCER BANNER -->
+    <div id="announcer" class="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none hidden">
+      <h1 id="announcer-text" class="text-4xl sm:text-6xl font-black text-yellow-400 tracking-widest text-center drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)]">
+        READY... FIGHT!
+      </h1>
+    </div>
+  </div>
+
+  <!-- TOUCH CONTROLS (MOBILE FRIENDLY) -->
+  <div class="w-full max-w-4xl grid grid-cols-2 gap-4 p-2 bg-slate-950 border-t-2 border-yellow-500/50 rounded-t-xl z-10">
+    
+    <!-- LEFT SIDE: MOVEMENT BUTTONS -->
+    <div class="grid grid-cols-3 gap-2">
+      <button id="btn-left" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-3 active:bg-yellow-500 active:text-black font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        LEFT
+      </button>
+      <div class="grid grid-rows-2 gap-1">
+        <button id="btn-jump" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-1 active:bg-yellow-500 active:text-black font-black text-center text-xs sm:text-sm flex items-center justify-center shadow-md">
+          JUMP
+        </button>
+        <button id="btn-block" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-1 active:bg-yellow-500 active:text-black font-black text-center text-xs sm:text-sm flex items-center justify-center shadow-md">
+          BLOCK
+        </button>
+      </div>
+      <button id="btn-right" class="btn-touch bg-slate-800 border-2 border-yellow-500 rounded-lg p-3 active:bg-yellow-500 active:text-black font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        RIGHT
+      </button>
+    </div>
+
+    <!-- RIGHT SIDE: COMBAT & SPECIAL BUTTONS -->
+    <div class="grid grid-cols-3 gap-2">
+      <button id="btn-punch" class="btn-touch bg-red-800 border-2 border-red-500 rounded-lg p-3 active:bg-red-500 font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        PUNCH
+      </button>
+      <button id="btn-kick" class="btn-touch bg-amber-700 border-2 border-amber-400 rounded-lg p-3 active:bg-amber-400 active:text-black font-black text-center text-sm sm:text-lg flex items-center justify-center shadow-md">
+        KICK
+      </button>
+      <button id="btn-special" class="btn-touch bg-gradient-to-r from-yellow-600 to-red-600 border-2 border-yellow-300 rounded-lg p-2 active:brightness-125 font-black text-center text-xs sm:text-sm flex items-center justify-center shadow-md col-span-1">
+        SPECIAL<br>SWEEP
+      </button>
+    </div>
+
+  </div>
+
+  <script>
+    // --- CANVAS SETUP ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1000;
+    canvas.height = 500;
+
+    // --- AUDIO SYNTHESIZER ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(freq, type, duration) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // --- GAME ENGINE STATE ---
+    const gravity = 0.8;
+    let gameOver = false;
+
+    // --- PLAYER CLASS ---
+    class Fighter {
+      constructor({ position, velocity, color, isAI }) {
+        this.position = position;
+        this.velocity = velocity;
+        this.width = 60;
+        this.height = 140;
+        this.color = color;
+        this.isAI = isAI;
+        this.health = 100;
+        this.energy = 0;
+        this.isGrounded = false;
+        this.isBlocking = false;
+        this.isAttacking = false;
+        this.attackType = '';
+        this.facing = isAI ? -1 : 1;
+        this.hitbox = { x: 0, y: 0, w: 0, h: 0 };
+        this.attackCooldown = 0;
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.position.x + this.width / 2, this.position.y + this.height / 2);
+        if (this.facing === -1) ctx.scale(-1, 1);
+
+        // Body Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath();
+        ctx.ellipse(0, this.height/2 - 5, 30, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Fighter Body (Dojo Gi)
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+
+        // Karate Belt
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(-this.width/2 - 2, 0, this.width + 4, 12);
+
+        // Head
+        ctx.fillStyle = '#f1c27d';
+        ctx.beginPath();
+        ctx.arc(0, -this.height/2 - 15, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Cobra / Miyagi Headband
+        ctx.fillStyle = this.isAI ? '#06b6d4' : '#eab308';
+        ctx.fillRect(-22, -this.height/2 - 28, 44, 8);
+
+        // Attack Render Visuals
+        if (this.isAttacking) {
+          ctx.fillStyle = '#ef4444';
+          if (this.attackType === 'punch') {
+            ctx.fillRect(10, -20, 50, 18);
+          } else if (this.attackType === 'kick') {
+            ctx.fillRect(10, 10, 65, 22);
+          } else if (this.attackType === 'special') {
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(-40, 40, 110, 25);
+          }
+        }
+
+        // Block Visual
+        if (this.isBlocking) {
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 4;
+          ctx.strokeRect(-this.width/2 - 5, -this.height/2 - 5, this.width + 10, this.height + 10);
+        }
+
+        ctx.restore();
+      }
+
+      update() {
+        this.position.x += this.velocity.x;
+        this.position.y += this.velocity.y;
+
+        // Apply Gravity
+        if (this.position.y + this.height + this.velocity.y < canvas.height - 40) {
+          this.velocity.y += gravity;
+          this.isGrounded = false;
+        } else {
+          this.velocity.y = 0;
+          this.position.y = canvas.height - 40 - this.height;
+          this.isGrounded = true;
+        }
+
+        // Arena Boundaries
+        if (this.position.x < 10) this.position.x = 10;
+        if (this.position.x + this.width > canvas.width - 10) this.position.x = canvas.width - 10 - this.width;
+
+        if (this.attackCooldown > 0) this.attackCooldown--;
+
+        this.draw();
+      }
+
+      attack(type) {
+        if (this.attackCooldown > 0 || this.isBlocking) return;
+        
+        if (type === 'special' && this.energy < 100) return;
+
+        this.isAttacking = true;
+        this.attackType = type;
+        this.attackCooldown = 25;
+
+        if (type === 'punch') playSound(300, 'square', 0.1);
+        if (type === 'kick') playSound(200, 'sawtooth', 0.15);
+        if (type === 'special') {
+          playSound(500, 'triangle', 0.4);
+          this.energy = 0;
+        }
+
+        setTimeout(() => {
+          this.isAttacking = false;
+        }, 200);
+      }
+    }
+
+    // --- INSTANTIATE FIGHTERS ---
+    const player = new Fighter({
+      position: { x: 150, y: 200 },
+      velocity: { x: 0, y: 0 },
+      color: '#18181b', // Cobra Kai Black Gi
+      isAI: false
+    });
+
+    const ai = new Fighter({
+      position: { x: 750, y: 200 },
+      velocity: { x: 0, y: 0 },
+      color: '#f8fafc', // Miyagi-Do White Gi
+      isAI: true
+    });
+
+    // --- TOUCH EVENT HANDLERS ---
+    function attachTouch(id, onPress, onRelease) {
+      const btn = document.getElementById(id);
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); onPress(); });
+      btn.addEventListener('touchend', (e) => { e.preventDefault(); if (onRelease) onRelease(); });
+      btn.addEventListener('mousedown', (e) => { e.preventDefault(); onPress(); });
+      btn.addEventListener('mouseup', (e) => { e.preventDefault(); if (onRelease) onRelease(); });
+    }
+
+    attachTouch('btn-left', () => { player.velocity.x = -6; }, () => { player.velocity.x = 0; });
+    attachTouch('btn-right', () => { player.velocity.x = 6; }, () => { player.velocity.x = 0; });
+    attachTouch('btn-jump', () => { if (player.isGrounded) player.velocity.y = -18; });
+    attachTouch('btn-block', () => { player.isBlocking = true; }, () => { player.isBlocking = false; });
+    attachTouch('btn-punch', () => { player.attack('punch'); });
+    attachTouch('btn-kick', () => { player.attack('kick'); });
+    attachTouch('btn-special', () => { player.attack('special'); });
+
+    // --- AI LOGIC BRAIN ---
+    function updateAI() {
+      if (gameOver) return;
+
+      const dist = player.position.x - ai.position.x;
+      ai.facing = dist > 0 ? 1 : -1;
+
+      // Distance Management
+      if (Math.abs(dist) > 90) {
+        ai.velocity.x = dist > 0 ? 3.5 : -3.5;
+        ai.isBlocking = false;
+      } else {
+        ai.velocity.x = 0;
+
+        // Counter & Attack Logic
+        if (player.isAttacking && Math.random() < 0.6) {
+          ai.isBlocking = true;
+        } else {
+          ai.isBlocking = false;
+          if (ai.attackCooldown === 0) {
+            const randMove = Math.random();
+            if (randMove < 0.45) ai.attack('punch');
+            else if (randMove < 0.85) ai.attack('kick');
+            else if (ai.energy >= 100) ai.attack('special');
+          }
+        }
+      }
+    }
+
+    // --- HITBOX COLLISION DETECTOR ---
+    function checkCollision(attacker, defender) {
+      if (!attacker.isAttacking) return false;
+
+      const attackRange = attacker.attackType === 'special' ? 100 : 70;
+      const reach = attacker.facing === 1 
+        ? (attacker.position.x + attacker.width < defender.position.x + defender.width && attacker.position.x + attacker.width + attackRange > defender.position.x)
+        : (attacker.position.x - attackRange < defender.position.x + defender.width && attacker.position.x > defender.position.x);
+
+      return reach && Math.abs(attacker.position.y - defender.position.y) < 80;
+    }
+
+    // --- GAME LOOP ---
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Arena Background Render
+      ctx.fillStyle = '#1e1b4b';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+
+      // Update Characters
+      player.update();
+      ai.update();
+      updateAI();
+
+      // Check Hits: Player -> AI
+      if (player.isAttacking && checkCollision(player, ai)) {
+        player.isAttacking = false;
+        const damage = player.attackType === 'special' ? 25 : (player.attackType === 'kick' ? 12 : 8);
+        
+        if (ai.isBlocking) {
+          ai.health -= damage * 0.2;
+          playSound(120, 'sine', 0.1);
+        } else {
+          ai.health -= damage;
+          player.energy = Math.min(100, player.energy + 18);
+          playSound(100, 'sawtooth', 0.2);
+        }
+      }
+
+      // Check Hits: AI -> Player
+      if (ai.isAttacking && checkCollision(ai, player)) {
+        ai.isAttacking = false;
+        const damage = ai.attackType === 'special' ? 25 : (ai.attackType === 'kick' ? 12 : 8);
+
+        if (player.isBlocking) {
+          player.health -= damage * 0.2;
+          playSound(120, 'sine', 0.1);
+        } else {
+          player.health -= damage;
+          ai.energy = Math.min(100, ai.energy + 18);
+          playSound(100, 'sawtooth', 0.2);
+        }
+      }
+
+      // Update UI HUD Bars
+      document.getElementById('p1-health').style.width = Math.max(0, player.health) + '%';
+      document.getElementById('p2-health').style.width = Math.max(0, ai.health) + '%';
+      document.getElementById('p1-energy').style.width = player.energy + '%';
+      document.getElementById('p2-energy').style.width = ai.energy + '%';
+
+      // Check Win / Loss Conditions
+      if (!gameOver) {
+        if (player.health <= 0 || ai.health <= 0) {
+          gameOver = true;
+          const banner = document.getElementById('announcer');
+          const bannerText = document.getElementById('announcer-text');
+          banner.classList.remove('hidden');
+
+          if (player.health > 0) {
+            bannerText.innerText = "COBRA KAI WINS!\nNO MERCY!";
+            bannerText.className = "text-4xl sm:text-6xl font-black text-yellow-400 text-center";
+          } else {
+            bannerText.innerText = "MIYAGI-DO WINS!\nSTRIKE FIRST NEXT TIME!";
+            bannerText.className = "text-4xl sm:text-6xl font-black text-cyan-400 text-center";
+          }
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
